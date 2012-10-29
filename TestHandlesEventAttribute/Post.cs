@@ -11,8 +11,8 @@ namespace TestHandlesEventAttribute
         public static Post Ask()
         {
             var result = new Post { Title = "What do I need to do in order to be a programmer out at sea?" };
-            
-            Created(result, new DefaultEventParameters());
+
+            Created.Fire(result);
             
             return result;
         }
@@ -22,20 +22,20 @@ namespace TestHandlesEventAttribute
             var oldTitle = Title;
             Title = newTitle;
 
-            Edited(this, new EditedParameters { OldTitle = oldTitle });
+            Edited.Fire(this, new EditedArgs { OldTitle = oldTitle });
         }
 
         // these two methods use the collection to signal listeners
         public void Close(string closeReason)
         {
             ClosedDate = DateTime.UtcNow;
-            Closed.Fire(this, new ClosedParameters { CloseReason = closeReason });
+            Closed.Fire(this, new ClosedArgs { CloseReason = closeReason });
         }
 
         public void Delete()
         {
             DeletionDate = DateTime.UtcNow;
-            Deleted.Fire(this, new DefaultEventParameters());
+            Deleted.Fire(this);
         }
     }
 }

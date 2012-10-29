@@ -8,7 +8,6 @@ namespace TestHandlesEventAttribute
         static void Main(string[] args)
         {
             HandlesEventAttribute.BindEvents();
-            HandlesEvent_CollectionBackedAttribute.BindEvents();
 
             // these two calls use standard events
             var p = Post.Ask();
@@ -21,44 +20,36 @@ namespace TestHandlesEventAttribute
             Console.ReadKey();
         }
 
-        [HandlesEvent(Post.EventTypes.Created)]
-        static void PostCreated(Post p, DefaultEventParameters parameters)
+        [HandlesEvent(EventType.PostCreated)]
+        static void PostCreated(Post p, EventArgs unused)
         {
-            WriteCommonEventParameters(parameters);
             Console.WriteLine("New post created with Title = " + p.Title);
         }
 
-        [HandlesEvent(Post.EventTypes.Edited)]
-        static void PostEdited(Post p, Post.EditedParameters parameters)
+        [HandlesEvent(EventType.PostEdited)]
+        static void PostEdited(Post p, Post.EditedArgs args)
         {
-            WriteCommonEventParameters(parameters);
-            Console.WriteLine("Post edit; title changed from\n\t{0}\nto\n\t{1}", parameters.OldTitle, p.Title);
+            Console.WriteLine("Post edit; title changed from\n\t{0}\nto\n\t{1}", args.OldTitle, p.Title);
         }
         
-        [HandlesEvent_CollectionBacked(Post.EventTypes.Closed)]
-        static void PostClosed(Post p, Post.ClosedParameters parameters)
+        [HandlesEvent(EventType.PostClosed)]
+        static void PostClosed(Post p, Post.ClosedArgs args)
         {
-            WriteCommonEventParameters(parameters);
-            Console.WriteLine("Post closed as " + parameters.CloseReason);
+            Console.WriteLine("Post closed as " + args.CloseReason);
         }
 
-        [HandlesEvent_CollectionBacked(Post.EventTypes.Deleted)]
-        static void PostDeleted(Post p, DefaultEventParameters parameters)
+        [HandlesEvent(EventType.PostDeleted)]
+        static void PostDeleted(Post p, EventArgs unused)
         {
-            WriteCommonEventParameters(parameters);
             Console.WriteLine("Post deleted at " + p.DeletionDate);
         }
 
-        [HandlesEvent_CollectionBacked(Post.EventTypes.Deleted)]
-        static void AnotherPostDeleted(Post p, DefaultEventParameters parameters)
+        [HandlesEvent(EventType.PostDeleted)]
+        static void AnotherPostDeleted(Post p, EventArgs unused)
         {
-            WriteCommonEventParameters(parameters);
+            Console.WriteLine("Same Post deleted at " + p.DeletionDate);
         }
-
-        static void WriteCommonEventParameters(DefaultEventParameters parameters, [CallerMemberName] string memberName = "")
-        {
-            Console.WriteLine("\n{0} called with User {1} on Site {2}", memberName, parameters.CurrentUser, parameters.CurrentSite);
-        }
+        
     }
 
     

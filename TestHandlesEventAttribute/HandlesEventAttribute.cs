@@ -7,69 +7,16 @@ using System.Reflection;
 
 namespace TestHandlesEventAttribute
 {
-    [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-    public class HandlesEventAttribute : Attribute
-    {
-        public object[] EventTypes { get; private set; }
-
-        public HandlesEventAttribute(params object[] eventTypes)
-        {
-            EventTypes = eventTypes;
-        }
-
-        /// <summary>
-        /// Finds static methods decorated with <see cref="HandlesEventAttribute"/> and adds them to static events 
-        /// based on a naming convention.
-        /// </summary>
-        /// <remarks>
-        /// Naming convention: HandlesEvent takes enum parameters located within the class containing our events.
-        /// Events have the same name as the enum values.
-        /// 
-        /// Example:
-        /// 
-        ///     [HandlesEvent(Post.EventTypes.Edited)]
-        ///     static void PostEdited(Post.Events.EditedParameters p)
-        /// 
-        /// This method will be added to the Post.Events.Edited event.
-        /// </remarks>
-        public static void BindEvents(Assembly assemblyToSearch = null)
-        {
-            assemblyToSearch = assemblyToSearch ?? Assembly.GetExecutingAssembly();
-
-            var pairs = from t in assemblyToSearch.GetTypes()
-                        from m in t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
-                        where m.IsDefined(typeof(HandlesEventAttribute))
-
-                        from @enum in m.GetCustomAttribute<HandlesEventAttribute>().EventTypes
-                        let eventsType = @enum.GetType().DeclaringType
-
-                        select new
-                        {
-                            HandlerInfo = m,
-                            EventInfo = eventsType.GetEvent(@enum.ToString())
-                        };
-
-            foreach (var pair in pairs)
-            {
-                var hi = pair.HandlerInfo;
-                var ei = pair.EventInfo;
-
-                Debug.WriteLine("HandlesEventAttribute: adding {0}.{1} to {2}.{3}", hi.DeclaringType.FullName, hi.Name, ei.DeclaringType.FullName, ei.Name);
-
-                ei.AddEventHandler(null, Delegate.CreateDelegate(ei.EventHandlerType, hi));
-            }
-        }
-    }
 
     /// <summary>
     /// Doesn't use built-in event system.
     /// </summary>
     [AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
-    public class HandlesEvent_CollectionBackedAttribute : Attribute
+    public class HandlesEventAttribute : Attribute
     {
-        public object[] EventTypes { get; private set; }
+        public EventType[] EventTypes { get; private set; }
 
-        public HandlesEvent_CollectionBackedAttribute(params object[] eventTypes)
+        public HandlesEventAttribute(params EventType[] eventTypes)
         {
             EventTypes = eventTypes;
         }
@@ -78,74 +25,83 @@ namespace TestHandlesEventAttribute
         {
             assemblyToSearch = assemblyToSearch ?? Assembly.GetExecutingAssembly();
 
-            var pairs = from t in assemblyToSearch.GetTypes()
-                        from m in t.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
-                        where m.IsDefined(typeof(HandlesEvent_CollectionBackedAttribute))
+            // all events and handlers should be static; doesn't matter about visibility
+            const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
 
-                        from enumValue in m.GetCustomAttribute<HandlesEvent_CollectionBackedAttribute>().EventTypes
-                        let modelType = enumValue.GetType().DeclaringType
-                        let eventCollection = modelType.GetField(enumValue.ToString(), BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static)
+            // find the "events" - should be marked with an attribute, e.g. [Event(EventTypes.QuestionCreated)]
+            var events = (from t in assemblyToSearch.GetTypes()
+                          from f in t.GetFields(flags)
+                          where f.IsDefined(typeof(EventAttribute))
+                          select new
+                          {
+                              EventFieldInfo = f,
+                              EventType = f.GetCustomAttribute<EventAttribute>().EventType
+                          }).ToList();
 
-                        group m by eventCollection into g
+            // find the handlers that should be called on each event, e.g. [HandlesEvent(EventTypes.QuestionCreated)]
+            var handlers = (from t in assemblyToSearch.GetTypes()
+                            from m in t.GetMethods(flags)
+                            where m.IsDefined(typeof(HandlesEventAttribute))
+                            select new
+                            {
+                                HandlerMethodInfo = m,
+                                EventTypes = m.GetCustomAttribute<HandlesEventAttribute>().EventTypes
+                            }).ToList();
 
-                        select new
-                        {
-                            EventCollectionFieldInfo = g.Key,
-                            HandlerMethodInfos = g.Select(_ => _).ToArray()
-                        };
 
-            // construct an EventHandlerCollection for each set of events found
-            foreach (var pair in pairs)
+            foreach (var e in events)
             {
-                var delegates = pair.HandlerMethodInfos.Select(mi => Delegate.CreateDelegate(Expression.GetActionType(mi.GetParameters().Select(p => p.ParameterType).ToArray()), mi)).ToList();
-                var collection = pair.EventCollectionFieldInfo.FieldType.GetConstructors().Single().Invoke(new[] { delegates });
+                // all the methods that should be called when each event is fired
+                var methods = handlers.Where(h => h.EventTypes.Contains(e.EventType)).Select(h => h.HandlerMethodInfo);
 
-                pair.EventCollectionFieldInfo.SetValue(null, collection);
+                // create something we can call
+                var delegates = methods.Select(mi => Delegate.CreateDelegate(Expression.GetActionType(mi.GetParameters().Select(p => p.ParameterType).ToArray()), mi));
+
+                // instantiate the "event" collection, passing in our handlers
+                var collection = e.EventFieldInfo.FieldType.GetConstructors().Single().Invoke(new[] { delegates });
+
+                // set the static event collection so it can be fired from our "normal" code
+                e.EventFieldInfo.SetValue(null, collection);
             }
         }
     }
 
-    public class DefaultEventParameters
+    public class EventHandlerCollection<TSender, TArgs> : IEnumerable<Action<TSender, TArgs>>
     {
-        public object CurrentUser { get; set; }
-        public object CurrentSite { get; set; }
+        private readonly Action<TSender, TArgs>[] _handlers;
 
-        // assumes this will be constructed in the main request thread
-        public DefaultEventParameters()
+        public EventHandlerCollection(IEnumerable<Delegate> handlers)
         {
-            CurrentUser = Current.User;
-            CurrentSite = Current.Site;
+            _handlers = handlers.Cast<Action<TSender, TArgs>>().ToArray();
         }
 
-    }
-
-    public class EventAttribute : Attribute
-    {
-        public object EventType { get; private set; }
-
-        public EventAttribute(object eventType)
+        public IEnumerator<Action<TSender, TArgs>> GetEnumerator()
         {
-            EventType = eventType;
+            return ((IEnumerable<Action<TSender, TArgs>>)_handlers).GetEnumerator();
+        }
+
+        System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()
+        {
+            return GetEnumerator();
         }
     }
 
-    public class EventHandlerCollection<TSender, TParams> where TParams : DefaultEventParameters
+    public static class EventHandlerCollectionExtensions
     {
-        public readonly Action<TSender, TParams>[] _handlers;
-
-        public EventHandlerCollection(List<Delegate> handlers)
+        public static void Fire<TSender>(this EventHandlerCollection<TSender, EventArgs> handlers, TSender sender)
         {
-            _handlers = handlers.Cast<Action<TSender, TParams>>().ToArray();
+            Fire(handlers, sender, EventArgs.Empty);
         }
 
-        public void Fire(TSender sender, TParams parameters)
+        public static void Fire<TSender, TArgs>(this EventHandlerCollection<TSender, TArgs> handlers, TSender sender, TArgs args)
         {
-            for (int i = 0; i < _handlers.Length; i++)
+            if (handlers == null) return;
+
+            foreach (var handler in handlers)
             {
-                _handlers[i](sender, parameters);
+                handler(sender, args);
             }
         }
     }
-
 
 }

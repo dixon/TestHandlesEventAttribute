@@ -4,37 +4,27 @@ namespace TestHandlesEventAttribute
 {
     partial class Post
     {
-        public enum EventTypes
-        {
-            Created,
-            Edited,
-            Closed,
-            Deleted
-        }
-
-        [Event(EventTypes.Created)]
-        public static event Action<Post, DefaultEventParameters> Created;
+        [Event(EventType.PostCreated)]
+        public static EventHandlerCollection<Post, EventArgs> Created;
 
 
-        public class EditedParameters : DefaultEventParameters
+        public class EditedArgs
         {
             public string OldTitle { get; set; }
         }
-        [Event(EventTypes.Edited)]
-        public static event Action<Post, EditedParameters> Edited;
+        [Event(EventType.PostEdited)]
+        public static EventHandlerCollection<Post, EditedArgs> Edited;
 
 
-        // alternate way of declaring our events using collection
-
-        public class ClosedParameters : DefaultEventParameters
+        public class ClosedArgs
         {
             public string CloseReason { get; set; }
         }
-        [Event(EventTypes.Closed)]
-        public static EventHandlerCollection<Post, ClosedParameters> Closed;
+        [Event(EventType.PostClosed)]
+        public static EventHandlerCollection<Post, ClosedArgs> Closed;
 
 
-        [Event(EventTypes.Deleted)]
-        public static EventHandlerCollection<Post, DefaultEventParameters> Deleted;
+        [Event(EventType.PostDeleted)]
+        public static EventHandlerCollection<Post, EventArgs> Deleted;
     }
 }

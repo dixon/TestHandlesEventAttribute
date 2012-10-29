@@ -42,6 +42,8 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Current.cs" />
+    <Compile Include="EventAttribute.cs" />
+    <Compile Include="EventType.cs" />
     <Compile Include="HandlesEventAttribute.cs" />
     <Compile Include="Post.cs" />
     <Compile Include="Post.Events.cs" />
